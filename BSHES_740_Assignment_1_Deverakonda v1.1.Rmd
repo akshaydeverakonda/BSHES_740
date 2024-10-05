@@ -1,0 +1,388 @@
+---
+title: "BSHES_740_Assignment_1"
+author: "Akshay Deverakonda"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+#Installing  and getting set up
+
+library(pacman)
+pacman::p_load(rtweet, tm,tidyverse, wordcloud,SnowballC, lsa, stringr, RWeka, wordcloud2, tidytext, quanteda, quanteda.textstats)
+
+
+setwd("C:/Users/dever/OneDrive/Documents/Emory/Classes/Semester 3 - Fall 2024/BSHES 740")
+
+
+
+```
+
+1. What are the date ranges for the two sets? What information is provided in the CSV files?
+What are the languages in which tweets have been posted? (2 points)
+
+```{r}
+
+TADA1 <- read.csv("TADA_A1_set1.csv")
+head(TADA1)
+
+
+TADA2 <- read.csv("TADA_A1_set2.csv")
+head(TADA2)
+
+
+#Date ranges for TADA 1
+first_1 <- TADA1 %>% 
+  arrange(date) %>%
+  head(1) %>%
+  pull(date)
+
+
+last_1 <- TADA1 %>% 
+  arrange(date) %>%
+  tail(1) %>%
+  pull(date)
+
+print(first_1)
+print(last_1)
+
+first_2 <- TADA2 %>% 
+  arrange(date) %>%
+  head(1) %>%
+  pull(date)
+ 
+
+last_2 <- TADA2 %>% 
+  arrange(date) %>%
+  tail(2) %>%
+  pull(date)
+
+print(first_2)
+print(last_2)
+
+lang1 <- unique(TADA1$lang)
+
+lang2 <- unique(TADA2$lang)
+
+lang_union <- union(lang1,lang2)
+lang_union
+length(lang_union)
+
+```
+For "TADA_A1_set1", the data range from November 1st, 2019 to January 30th, 2020
+For "TADA_A1_set2", the data range from February 1st, 2020 to April 29th, 2020
+
+For each tweet, the datasets have a unique ID, a date, the language of the tweet, the tweet itself, and a location for the tweet. There are tweets in 40 languages between the two datasets, and also tweets with an "undetermined" language category.
+
+
+2. What is the total number of posts in set 1? What is the total in set 2? (1 point)
+
+```{r}
+nrow(TADA1)
+nrow(TADA2)
+
+```
+There are 171012 posts in "TADA_A1_set1", and 226852 posts in "TADA_A1_set2"
+
+Setting up corpuses and document term matrices for the two datasets
+
+```{r}
+
+#Merging documents, then creating one corpus from them
+
+TADA_tweets <- rbind (TADA1, TADA2)
+class(TADA_tweets)
+
+nrow(TADA_tweets)
+
+#Setting up corpus for TADA combined dataset
+
+TADA_texts <- TADA_tweets$text
+TADA_texts_corpus <- Corpus(VectorSource(TADA_texts))
+
+#meta(TADA_texts_corpus, "id") <- TADA_tweets$id
+#meta(TADA_texts_corpus, "date") <- TADA_tweets$date
+
+
+
+#Pre-processing TADA combined corpus
+TADA_texts_corpus <- tm_map(TADA_texts_corpus, content_transformer(tolower))
+TADA_texts_corpus <- tm_map(TADA_texts_corpus, removePunctuation)
+TADA_texts_corpus <- tm_map(TADA_texts_corpus, removeNumbers)
+TADA_texts_corpus  <- tm_map(TADA_texts_corpus , function(x) removeWords(x, stopwords()))
+TADA_texts_corpus <- tm_map(TADA_texts_corpus, stemDocument)
+
+#Making document term matrix
+
+tada_dtm <- DocumentTermMatrix(TADA_texts_corpus)
+tada_dtm_r <- removeSparseTerms(tada_dtm, sparse = .99)
+
+```
+3. How many tweets are there for methadone, suboxone, and fentanyl in total? Tip: sometimes
+alternative expressions are used for substances (eg., fent for fentanyl). (2 points)
+```{r}
+
+#Looking at combined TADA text file
+#length(grep("methadone",TADA_texts))
+
+substance <- "suboxon|Suboxon|fent|Fent|methadon|Methadon"
+count <- length(grep(substance,TADA_texts))
+print(count)
+
+
+```
+There are 376,266 tweets in total that mention one or more of the three substances.
+
+4. Are there fentanyl analogs that are also being discussed (eg., carfentanil)?
+
+```{r}
+analog_c <- "carfentanil|Carfentanil|carfent|Carfent"
+analog_f <- "furanylfentanyl|Furanylfentanyl|furanylfent|Furanylfent"
+analog_a <- "acetylfentanyl|Acetylfentanyl|acetylfent|Acetylfent"
+analog_m <- "methylfentanyl|Methylfentanyl|methylfent|Methylfent"
+
+count_analog_c <- length(grep(analog_c,TADA_texts))
+count_analog_f <- length(grep(analog_f,TADA_texts))
+count_analog_a <- length(grep(analog_a,TADA_texts))
+count_analog_m <- length(grep(analog_m,TADA_texts))
+
+
+print(count_analog_c)
+print(count_analog_f)
+print(count_analog_a)
+print(count_analog_m)
+
+
+
+
+
+```
+Yes, carfentanil, furanylfentanyl, and acetylfentanyl are all mentioned in the tweets
+
+5. What are some of the topics that are most closely associated with each of the three
+substances? The top 5-10 topics (if relevant) are acceptable. (2 points)
+
+```{r}
+
+#Three substances of concern are methadone, suboxone, and fentanyl
+
+#Fentanyl
+
+fentanyl <- as.data.frame(findAssocs(tada_dtm_r, "fentanyl",0.05))
+
+fentanyl_fil <- top_n(fentanyl,10)
+fentanyl_fil
+
+
+fentanyl_fil %>%
+  rownames_to_column() %>%
+  ggplot(aes(x=reorder(rowname,fentanyl),y=fentanyl)) + geom_point(size=4) + 
+  coord_flip() + ylab('Correlation') + xlab('Term') + 
+  ggtitle('Terms correlated with Fentanyl')
+
+
+
+#Methadone
+
+methadone <- as.data.frame(findAssocs(tada_dtm_r, "methadon",0.05))
+
+methadone_fil <- top_n(methadone,10)
+methadone_fil
+
+
+methadone_fil %>%
+  rownames_to_column() %>%
+  ggplot(aes(x=reorder(rowname,methadon),y=methadon)) + geom_point(size=4) + 
+  coord_flip() + ylab('Correlation') + xlab('Term') + 
+  ggtitle('Terms correlated with Methadone')
+
+#Suboxone
+
+suboxone <- as.data.frame(findAssocs(tada_dtm_r, "suboxon",0.05))
+
+
+suboxone_fil <- top_n(suboxone,10)
+suboxone_fil
+
+suboxone_fil %>%
+  rownames_to_column() %>%
+  ggplot(aes(x=reorder(rowname,suboxon),y=suboxon)) + geom_point(size=4) + 
+  coord_flip() + ylab('Correlation') + xlab('Term') + 
+  ggtitle('Terms correlated with Suboxone')
+
+```
+
+
+
+
+
+6 - generating word cloud
+
+```{r}
+
+#Fentanyl wordcloud
+wordcloud(row.names(fentanyl_fil),fentanyl_fil$fentanyl, min.freq=10, max.words=30, scale=c(4,.3), random.order=FALSE, colors=brewer.pal(12, "Set3"))
+
+#Methadone wordcloud
+wordcloud(row.names(methadone_fil),methadone_fil$methadon, min.freq=0.09, max.words=30, scale=c(4,.3), random.order=FALSE, colors=brewer.pal(12, "Set3"))
+
+
+#Suboxone wordcloud
+wordcloud(row.names(suboxone_fil),suboxone_fil$suboxon, min.freq=0.08, max.words=30, scale=c(4,.3), random.order=FALSE, colors=brewer.pal(12, "Set3"))
+
+
+```
+
+
+
+7. Generate appropriate time-series figures to compare how the frequencies of mentions of
+these substances differ. (2 points)
+
+```{r}
+
+TADA_df <- data.frame(text = TADA_tweets$text,
+                      date = TADA_tweets$date)
+
+
+freq <- TADA_df %>%
+  corpus(text_field="text") %>%
+  tokens(remove_numbers = TRUE, remove_punct = TRUE) %>%
+  tokens_tolower() %>%
+  tokens_remove(stopwords("english")) %>%
+  tokens_wordstem(language = quanteda_options("language_stemmer")) %>%
+  dfm() %>%
+  textstat_frequency(groups = date) 
+ 
+
+#Fentanyl
+freq_f <- freq %>%
+   filter(feature == "fentanyl") %>%
+  select(frequency, group)
+
+freq_f$group <- as.Date(freq_f$group)
+
+ggplot(data=freq_f, aes(x=group, y=frequency)) +
+  geom_line() + ggtitle("Frequency (counts) of mentions of fentanyl over time") + 
+  xlab("Months (November 2019 - April 2020)") + ylab("Number of mentions") +
+geom_vline(xintercept = as.numeric(as.Date("2020-03-13")), 
+             linetype = "dashed", color = "black") +
+  annotate("text", x = as.Date("2020-03-13"), 
+           y = max(freq_f$frequency, na.rm = TRUE), 
+           label = "March 13, 2020", 
+           vjust = -0.5, hjust = 1.1)
+
+#Methadone
+
+freq_m <- freq %>%
+   filter(feature == "methadon") %>%
+  select(frequency, group)
+
+freq_m$group <- as.Date(freq_m$group)
+
+ggplot(data=freq_m, aes(x=group, y=frequency)) +
+  geom_line() + ggtitle("Frequency (counts) of mentions of methadone over time")  + 
+  xlab("Months (November 2019 - April 2020)") + ylab("Number of mentions") +
+geom_vline(xintercept = as.numeric(as.Date("2020-03-13")), 
+             linetype = "dashed", color = "black") +
+  annotate("text", x = as.Date("2020-03-13"), 
+           y = max(freq_m$frequency, na.rm = TRUE), 
+           label = "March 13, 2020", 
+           vjust = -0.5, hjust = 1.1)
+
+#Suboxone
+
+freq_s <- freq %>%
+   filter(feature == "suboxon") %>%
+  select(frequency, group)
+
+freq_s$group <- as.Date(freq_s$group)
+
+
+ggplot(data=freq_s, aes(x=group, y=frequency)) +
+  geom_line() + ggtitle("Frequency (counts) of mentions of suboxone over time")  + 
+  xlab("Months (November 2019 - April 2020)") + ylab("Number of mentions") +
+geom_vline(xintercept = as.numeric(as.Date("2020-03-13")), 
+             linetype = "dashed", color = "black") +
+  annotate("text", x = as.Date("2020-03-13"), 
+           y = max(freq_s$frequency, na.rm = TRUE), 
+           label = "March 13, 2020", 
+           vjust = -0.5, hjust = 1.1)
+
+
+```
+
+
+8. Find the top 10 most frequent bigrams in each of the three sets. Plot a bar chart for these. (2
+points)’
+
+```{r}
+
+#Tokenizing
+TADA_text <- tokens(TADA_tweets$text,remove_numbers = TRUE, remove_punct = TRUE)
+
+
+#Lowercasing
+TADA_text <- tokens_tolower(TADA_text)
+
+#Removing stopwords
+TADA_text <- tokens_remove(TADA_text, stopwords("english"))
+
+#Stemming
+TADA_text <- tokens_wordstem(TADA_text,language = quanteda_options("language_stemmer") )
+
+#Creating bigrams
+TADA_bigrams <- tokens_ngrams(TADA_text, n = 2:2)
+print(TADA_bigrams)
+
+TADA_dfm <- dfm(TADA_bigrams)
+head(TADA_dfm)
+#TADA_dfm <- dfm_trim(TADA_dfm, min_docfreq = 0.01)
+
+
+
+#Filtering for fentanyl-related bigrams
+TADA_dfm_f <- dfm_select(TADA_dfm,pattern="fentanyl",selection="keep",valuetype="regex",case_insensitive="TRUE")
+print(TADA_dfm_f)
+
+test_f <- as.data.frame(topfeatures(TADA_dfm_f,10))
+colnames(test_f) <- c("Count")
+test_f
+
+ggplot(data=test_f, aes(x = reorder(row.names(test_f), -Count), y=Count)) +
+  geom_bar(stat="identity", width = 0.7) + 
+    theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Bigram term") + ylab("Frequency") +
+  ggtitle("Top 10 bigrams of fentanyl-related terms across both datasets")
+
+#Filtering for methadone-related bigrams
+TADA_dfm_m <- dfm_select(TADA_dfm,pattern="methadon",selection="keep",valuetype="regex",case_insensitive="TRUE")
+
+test_m <- as.data.frame(topfeatures(TADA_dfm_m,10))
+colnames(test_m) <- c("Count")
+
+
+ggplot(data=test_m, aes(x = reorder(row.names(test_m), -Count), y=Count)) +
+  geom_bar(stat="identity", width = 0.7) + 
+    theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Bigram term") + ylab("Frequency") +
+  ggtitle("Top 10 bigrams of methadone-related terms across both datasets")
+  
+
+#Filtering for suboxone related bigrams
+
+TADA_dfm_s <- dfm_select(TADA_dfm,pattern="suboxon",selection="keep",valuetype="regex",case_insensitive="TRUE")
+
+test_s <- as.data.frame(topfeatures(TADA_dfm_s,10))
+colnames(test_s) <- c("Count")
+
+
+ggplot(data=test_s, aes(x = reorder(row.names(test_s), -Count), y=Count)) +
+  geom_bar(stat="identity", width = 0.7) + 
+    theme(axis.text.x = element_text(angle = 90)) +
+  xlab("Bigram term") + ylab("Frequency") +
+  ggtitle("Top 10 bigrams of suboxone-related terms across both datasets")
+  
+
+
+```
+
